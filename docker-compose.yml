@@ -1,0 +1,22 @@
+version: '3'
+
+services:
+  flight-api:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./flights.sqlite3:/app/flights.sqlite3
+    command: python api.py
+    environment:
+      - FLASK_ENV=production
+    restart: unless-stopped
+
+  # Uncomment to add a CLI service if needed
+  # flight-cli:
+  #   build: .
+  #   volumes:
+  #     - ./flights.sqlite3:/app/flights.sqlite3
+  #   command: python main.py
+  #   tty: true
+  #   stdin_open: true
