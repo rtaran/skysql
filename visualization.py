@@ -1,184 +1,195 @@
+from sqlalchemy import create_engine, text
 import matplotlib.pyplot as plt
-import seaborn as sns
-import pandas as pd
 
+class FlightData:
+    def __init__(self, uri):
+        self.engine = create_engine(uri)
 
-def plot_delayed_flights_by_airline(flight_data):
+    def get_flight_by_id(self, flight_id):
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT * FROM flights WHERE id = :id"),
+                parameters={"id": flight_id}
+            ).fetchall()
+            return [dict(row._mapping) for row in result]
+
+    def get_flights_by_date(self, day, month, year):
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT * FROM flights WHERE day = :day AND month = :month AND year = :year"
+                ),
+                parameters={"day": day, "month": month, "year": year}
+            ).fetchall()
+            return [dict(row._mapping) for row in result]
+
+    def get_delayed_flights_by_airline(self, airline=None):
+        if airline:
+            query = """
+            SELECT airlines.airline AS airline, COUNT(*) as delayed_flights
+            FROM flights
+            JOIN airlines ON flights.airline = airlines.id
+            WHERE airlines.airline = :airline AND flights.departure_delay >= 20
+            GROUP BY airlines.airline
+            """
+            params = {"airline": airline}
+            with self.engine.connect() as conn:
+                result = conn.execute(text(query), parameters=params).fetchall()
+            return [dict(row._mapping) for row in result]
+        else:
+            query = """
+            SELECT airlines.airline AS airline, COUNT(*) as delayed_flights
+            FROM flights
+            JOIN airlines ON flights.airline = airlines.id
+            WHERE flights.departure_delay >= 20
+            GROUP BY airlines.airline
+            """
+            with self.engine.connect() as conn:
+                result = conn.execute(text(query)).fetchall()
+            return [dict(row._mapping) for row in result]
+
+    def get_total_flights_by_airline(self):
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT airline, COUNT(*) as total_flights FROM flights GROUP BY airline"
+                )
+            ).fetchall()
+            return [dict(row._mapping) for row in result]
+
+    def get_delayed_flights_by_airport(self, airport_code):
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT * FROM flights WHERE origin_airport = :airport AND departure_delay > 0"
+                ),
+                parameters={"airport": airport_code}
+            ).fetchall()
+            return [dict(row._mapping) for row in result]
+
+    def get_delayed_flights_by_hour(self):
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT strftime('%H', scheduled_departure) AS hour, COUNT(*) as delayed_flights FROM flights WHERE departure_delay > 0 GROUP BY hour ORDER BY hour"
+                )
+            ).fetchall()
+            return [dict(row._mapping) for row in result]
+
+    def get_total_flights_by_hour(self):
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    "SELECT hour, COUNT(*) as total_flights FROM flights GROUP BY hour"
+                )
+            ).fetchall()
+            return [dict(row._mapping) for row in result]
+
+def plot_delayed_flights_by_airline(data_manager):
     """
-    Creates a bar chart showing the percentage of delayed flights by airline.
+    Plots the number of delayed flights by airline.
     """
-    # Get data - error handling in case results are empty
-    delayed_data = flight_data.get_delayed_flights_by_airline()
-    total_data = flight_data.get_total_flights_by_airline()
-
-    if not delayed_data or not total_data:
-        print("No data available to visualize")
+    stats = data_manager.get_delayed_flights_by_airline()
+    if not stats:
+        print("No delayed flight data to plot.")
         return
 
-    delayed = pd.DataFrame(delayed_data)
-    total = pd.DataFrame(total_data)
+    stats = sorted(stats, key=lambda x: x["delayed_flights"], reverse=True)
 
-    # Make sure we have data to merge
-    if delayed.empty or total.empty:
-        print("Insufficient data to create visualization")
-        return
+    airlines = [row["airline"] for row in stats]
+    delays = [row["delayed_flights"] for row in stats]
 
-    # Create merged dataframe with percentage calculation
-    merged = pd.merge(delayed, total, on='airline')
-    merged['percentage_delayed'] = (merged['delayed_flights'] / merged['total_flights']) * 100
-
-    # Create visualization
-    plt.figure(figsize=(12, 6))
-    sns.barplot(x='airline', y='percentage_delayed', data=merged, color='blue')
-    plt.xticks(rotation=45, ha='right')
-    plt.xlabel('Airline')
-    plt.ylabel('Percentage of Delayed Flights')
-    plt.title('Percentage of Delayed Flights by Airline')
-    plt.tight_layout()  # Added to prevent labels from being cut off
-    plt.show()
-
-
-def plot_delayed_flights_by_hour(flight_data):
-    """
-    Creates a bar chart showing the percentage of delayed flights by hour of the day.
-    """
-    # Get data with error handling
-    delayed_data = flight_data.get_delayed_flights_by_hour()
-    total_data = flight_data.get_total_flights_by_hour()
-
-    if not delayed_data or not total_data:
-        print("No data available to visualize")
-        return
-
-    delayed = pd.DataFrame(delayed_data)
-    total = pd.DataFrame(total_data)
-
-    # Make sure we have data to merge
-    if delayed.empty or total.empty:
-        print("Insufficient data to create visualization")
-        return
-
-    # Create merged dataframe with percentage calculation
-    merged = pd.merge(delayed, total, on='hour')
-    merged['percentage_delayed'] = (merged['delayed_flights'] / merged['total_flights']) * 100
-
-    # Create visualization
-    plt.figure(figsize=(12, 6))
-    sns.barplot(x='hour', y='percentage_delayed', data=merged, palette='viridis')
-    plt.xlabel('Hour of Day')
-    plt.ylabel('Percentage of Delayed Flights')
-    plt.title('Percentage of Delayed Flights by Hour of Day')
+    plt.figure(figsize=(12, 7))
+    plt.bar(airlines, delays, color="skyblue")
+    plt.xlabel("Airline")
+    plt.ylabel("Number of Delayed Flights")
+    plt.title("Delayed Flights by Airline")
+    plt.xticks(rotation=45)
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
     plt.tight_layout()
     plt.show()
 
-
-def plot_delayed_flights_by_route(flight_data):
-    """
-    Creates a heatmap showing the percentage of delayed flights by route.
-    This function assumes data contains origin and destination airports.
-    """
-    # Get data with error handling
-    delayed_data = flight_data.get_delayed_flights_by_route()
-    total_data = flight_data.get_total_flights_by_route()
-
-    if not delayed_data or not total_data:
-        print("No data available to visualize")
+def plot_delayed_flights_by_hour(data_manager):
+    stats = data_manager.get_delayed_flights_by_hour()
+    if not stats:
+        print("No delayed flight data to plot.")
         return
 
-    delayed = pd.DataFrame(delayed_data)
-    total = pd.DataFrame(total_data)
+    stats = sorted(stats, key=lambda x: int(x["hour"]))
 
-    # Make sure we have data to merge and it contains required columns
-    if (delayed.empty or total.empty or
-            'ORIGIN_AIRPORT' not in delayed.columns or
-            'DESTINATION_AIRPORT' not in delayed.columns):
-        print("Insufficient data to create visualization")
-        return
+    hours = [int(row["hour"]) for row in stats]
+    delays = [row["delayed_flights"] for row in stats]
 
-    # Create merged dataframe with percentage calculation
-    try:
-        merged = pd.merge(delayed, total, on=['ORIGIN_AIRPORT', 'DESTINATION_AIRPORT'])
-        merged['percentage_delayed'] = (merged['delayed_flights'] / merged['total_flights']) * 100
+    plt.figure(figsize=(12, 7))
+    plt.bar(hours, delays, color="orange")
+    plt.xlabel("Hour of Day")
+    plt.ylabel("Number of Delayed Flights")
+    plt.title("Delayed Flights by Hour")
+    plt.xticks(hours)
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.show()
 
-        # Create pivot table for heatmap (with error handling for empty data)
-        if len(merged) > 0:
-            pivot_table = merged.pivot_table(
-                values='percentage_delayed',
-                index='ORIGIN_AIRPORT',
-                columns='DESTINATION_AIRPORT',
-                fill_value=0
-            )
+def plot_percentage_delayed_flights_by_airline(data_manager):
+    delayed_stats = data_manager.get_delayed_flights_by_airline()
+    total_stats = data_manager.get_total_flights_by_airline()
 
-            # Create visualization
-            plt.figure(figsize=(12, 10))
-            sns.heatmap(pivot_table, cmap='Reds', linewidths=0.5)
-            plt.xlabel('Destination Airport')
-            plt.ylabel('Origin Airport')
-            plt.title('Percentage of Delayed Flights by Route')
-            plt.tight_layout()
-            plt.show()
-        else:
-            print("Not enough routes to create heatmap")
-    except Exception as e:
-        print(f"Error creating route visualization: {e}")
+    total_lookup = {row["airline"]: row["total_flights"] for row in total_stats}
+    stats = []
+    for row in delayed_stats:
+        airline = row["airline"]
+        delayed = row["delayed_flights"]
+        total = total_lookup.get(airline, 1)
+        stats.append({
+            "airline": airline,
+            "percentage": (delayed / total) * 100
+        })
 
+    stats = sorted(stats, key=lambda x: x["percentage"], reverse=True)
+    airlines = [row["airline"] for row in stats]
+    percentages = [row["percentage"] for row in stats]
 
-def plot_routes_on_map(flight_data):
-    """
-    Creates a map visualization of flight routes with delay information.
-    Note: This function requires geopandas and Basemap which might need
-    to be installed separately.
-    """
-    try:
-        import geopandas as gpd
-        from mpl_toolkits.basemap import Basemap
-    except ImportError:
-        print("Required libraries for map visualization not installed.")
-        print("Please install geopandas and basemap with:")
-        print("pip install geopandas mpl_toolkits.basemap")
-        return
+    plt.figure(figsize=(12, 7))
+    plt.bar(airlines, percentages, color="skyblue")
+    plt.xlabel("Airline")
+    plt.ylabel("Percentage of Delayed Flights (%)")
+    plt.title("Percentage of Delayed Flights by Airline")
+    plt.xticks(rotation=45)
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.show()
 
-    # Get data with error handling
-    delayed_data = flight_data.get_delayed_flights_by_route()
-    total_data = flight_data.get_total_flights_by_route()
+def plot_percentage_delayed_flights_by_hour(data_manager):
+    delayed_stats = data_manager.get_delayed_flights_by_hour()
+    total_stats = data_manager.get_total_flights_by_hour()
 
-    if not delayed_data or not total_data:
-        print("No data available to visualize")
-        return
+    total_lookup = {row["hour"]: row["total_flights"] for row in total_stats}
+    stats = []
+    for row in delayed_stats:
+        hour = row["hour"]
+        delayed = row["delayed_flights"]
+        total = total_lookup.get(hour, 1)
+        stats.append({
+            "hour": hour,
+            "percentage": (delayed / total) * 100
+        })
 
-    try:
-        delayed = pd.DataFrame(delayed_data)
-        total = pd.DataFrame(total_data)
+    stats = sorted(stats, key=lambda x: int(x["hour"]))
+    hours = [int(row["hour"]) for row in stats]
+    percentages = [row["percentage"] for row in stats]
 
-        # This function requires additional location data that might not be present
-        # We'd need airport coordinates to be in the dataset
-        required_columns = ['ORIGIN_AIRPORT', 'DESTINATION_AIRPORT',
-                            'ORIGIN_AIRPORT_LAT', 'ORIGIN_AIRPORT_LON',
-                            'DESTINATION_AIRPORT_LAT', 'DESTINATION_AIRPORT_LON']
+    plt.figure(figsize=(12, 7))
+    plt.bar(hours, percentages, color="orange")
+    plt.xlabel("Hour of Day")
+    plt.ylabel("Percentage of Delayed Flights (%)")
+    plt.title("Percentage of Delayed Flights by Hour")
+    plt.xticks(hours)
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.tight_layout()
+    plt.show()
 
-        # Check if we have all required location data
-        if not all(col in delayed.columns for col in required_columns):
-            print("Required location data missing from dataset.")
-            print("This visualization needs airport latitude and longitude data.")
-            return
+def plot_delays_heatmap_routes(data_manager):
+    print("Heatmap of routes - placeholder function. To be implemented with seaborn or similar.")
 
-        merged = pd.merge(delayed, total, on=['ORIGIN_AIRPORT', 'DESTINATION_AIRPORT'])
-        merged['percentage_delayed'] = (merged['delayed_flights'] / merged['total_flights']) * 100
-
-        plt.figure(figsize=(12, 8))
-        m = Basemap(projection='merc', llcrnrlat=20, urcrnrlat=55,
-                    llcrnrlon=-130, urcrnrlon=-60, resolution='l')
-        m.drawcoastlines()
-        m.drawcountries()
-        m.drawstates()
-
-        for _, row in merged.iterrows():
-            origin_x, origin_y = m(row['ORIGIN_AIRPORT_LON'], row['ORIGIN_AIRPORT_LAT'])
-            dest_x, dest_y = m(row['DESTINATION_AIRPORT_LON'], row['DESTINATION_AIRPORT_LAT'])
-            color = 'red' if row['percentage_delayed'] > 50 else 'green'
-            plt.plot([origin_x, dest_x], [origin_y, dest_y], color=color, linewidth=2)
-
-        plt.title('Percentage of Delayed Flights Per Route')
-        plt.show()
-    except Exception as e:
-        print(f"Error creating map visualization: {e}")
+def plot_delays_on_map(data_manager):
+    print("Map of routes - placeholder function. To be implemented with folium or similar.")
