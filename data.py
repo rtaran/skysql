@@ -1,6 +1,3 @@
-# Final polished data.py
-
-import sqlalchemy
 from sqlalchemy import create_engine, text
 
 # Query definitions
@@ -98,7 +95,9 @@ class FlightData:
         try:
             with self.engine.connect() as conn:
                 result = conn.execute(text(query), parameters=params)
-                return [dict(row._mapping) for row in result]
+                rows = [dict(row._mapping) for row in result]
+                # Lowercase keys immediately
+                return [{k.lower(): v for k, v in row.items()} for row in rows]
         except Exception as e:
             print(f"Database query failed: {e}")
             return []
