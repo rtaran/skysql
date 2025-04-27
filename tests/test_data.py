@@ -96,7 +96,7 @@ class TestFlightData:
         call_args = data_manager._mock_connection.execute.call_args[0]
         assert "WHERE flights.ORIGIN_AIRPORT = :origin" in str(call_args[0])
         call_kwargs = data_manager._mock_connection.execute.call_args[1]
-        assert call_kwargs["params"]["origin"] == "LAX"
+        assert call_kwargs["parameters"]["origin"] == "LAX"
 
     def test_get_delayed_flights_by_airline(self, data_manager):
         """Test retrieving delayed flights by airline"""

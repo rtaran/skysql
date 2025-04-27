@@ -1,195 +1,181 @@
-from sqlalchemy import create_engine, text
 import matplotlib.pyplot as plt
+import seaborn as sns
+import folium
+import pandas as pd
+import webbrowser
 
-class FlightData:
-    def __init__(self, uri):
-        self.engine = create_engine(uri)
-
-    def get_flight_by_id(self, flight_id):
-        with self.engine.connect() as conn:
-            result = conn.execute(
-                text("SELECT * FROM flights WHERE id = :id"),
-                parameters={"id": flight_id}
-            ).fetchall()
-            return [dict(row._mapping) for row in result]
-
-    def get_flights_by_date(self, day, month, year):
-        with self.engine.connect() as conn:
-            result = conn.execute(
-                text(
-                    "SELECT * FROM flights WHERE day = :day AND month = :month AND year = :year"
-                ),
-                parameters={"day": day, "month": month, "year": year}
-            ).fetchall()
-            return [dict(row._mapping) for row in result]
-
-    def get_delayed_flights_by_airline(self, airline=None):
-        if airline:
-            query = """
-            SELECT airlines.airline AS airline, COUNT(*) as delayed_flights
-            FROM flights
-            JOIN airlines ON flights.airline = airlines.id
-            WHERE airlines.airline = :airline AND flights.departure_delay >= 20
-            GROUP BY airlines.airline
-            """
-            params = {"airline": airline}
-            with self.engine.connect() as conn:
-                result = conn.execute(text(query), parameters=params).fetchall()
-            return [dict(row._mapping) for row in result]
-        else:
-            query = """
-            SELECT airlines.airline AS airline, COUNT(*) as delayed_flights
-            FROM flights
-            JOIN airlines ON flights.airline = airlines.id
-            WHERE flights.departure_delay >= 20
-            GROUP BY airlines.airline
-            """
-            with self.engine.connect() as conn:
-                result = conn.execute(text(query)).fetchall()
-            return [dict(row._mapping) for row in result]
-
-    def get_total_flights_by_airline(self):
-        with self.engine.connect() as conn:
-            result = conn.execute(
-                text(
-                    "SELECT airline, COUNT(*) as total_flights FROM flights GROUP BY airline"
-                )
-            ).fetchall()
-            return [dict(row._mapping) for row in result]
-
-    def get_delayed_flights_by_airport(self, airport_code):
-        with self.engine.connect() as conn:
-            result = conn.execute(
-                text(
-                    "SELECT * FROM flights WHERE origin_airport = :airport AND departure_delay > 0"
-                ),
-                parameters={"airport": airport_code}
-            ).fetchall()
-            return [dict(row._mapping) for row in result]
-
-    def get_delayed_flights_by_hour(self):
-        with self.engine.connect() as conn:
-            result = conn.execute(
-                text(
-                    "SELECT strftime('%H', scheduled_departure) AS hour, COUNT(*) as delayed_flights FROM flights WHERE departure_delay > 0 GROUP BY hour ORDER BY hour"
-                )
-            ).fetchall()
-            return [dict(row._mapping) for row in result]
-
-    def get_total_flights_by_hour(self):
-        with self.engine.connect() as conn:
-            result = conn.execute(
-                text(
-                    "SELECT hour, COUNT(*) as total_flights FROM flights GROUP BY hour"
-                )
-            ).fetchall()
-            return [dict(row._mapping) for row in result]
 
 def plot_delayed_flights_by_airline(data_manager):
-    """
-    Plots the number of delayed flights by airline.
-    """
-    stats = data_manager.get_delayed_flights_by_airline()
-    if not stats:
-        print("No delayed flight data to plot.")
+    data = data_manager.get_delayed_flights_by_airline()
+    if not data:
+        print("No delayed flight data for airlines.")
         return
 
-    stats = sorted(stats, key=lambda x: x["delayed_flights"], reverse=True)
+    df = pd.DataFrame(data)
+    if df.empty:
+        print("No delayed flight data for airlines (empty DataFrame).")
+        return
 
-    airlines = [row["airline"] for row in stats]
-    delays = [row["delayed_flights"] for row in stats]
-
-    plt.figure(figsize=(12, 7))
-    plt.bar(airlines, delays, color="skyblue")
+    plt.figure(figsize=(12, 6))
+    sns.barplot(x="airline", y="delayed_flights", data=df)
+    plt.title("Number of Delayed Flights per Airline")
     plt.xlabel("Airline")
     plt.ylabel("Number of Delayed Flights")
-    plt.title("Delayed Flights by Airline")
     plt.xticks(rotation=45)
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    for index, row in df.iterrows():
+        plt.text(index, row.delayed_flights + 2, int(row.delayed_flights), ha='center', va='bottom')
     plt.tight_layout()
     plt.show()
 
-def plot_delayed_flights_by_hour(data_manager):
-    stats = data_manager.get_delayed_flights_by_hour()
-    if not stats:
-        print("No delayed flight data to plot.")
-        return
-
-    stats = sorted(stats, key=lambda x: int(x["hour"]))
-
-    hours = [int(row["hour"]) for row in stats]
-    delays = [row["delayed_flights"] for row in stats]
-
-    plt.figure(figsize=(12, 7))
-    plt.bar(hours, delays, color="orange")
-    plt.xlabel("Hour of Day")
-    plt.ylabel("Number of Delayed Flights")
-    plt.title("Delayed Flights by Hour")
-    plt.xticks(hours)
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
-    plt.tight_layout()
-    plt.show()
 
 def plot_percentage_delayed_flights_by_airline(data_manager):
-    delayed_stats = data_manager.get_delayed_flights_by_airline()
-    total_stats = data_manager.get_total_flights_by_airline()
+    delayed = data_manager.get_delayed_flights_by_airline()
+    total = data_manager.get_total_flights_by_airline()
 
-    total_lookup = {row["airline"]: row["total_flights"] for row in total_stats}
-    stats = []
-    for row in delayed_stats:
-        airline = row["airline"]
-        delayed = row["delayed_flights"]
-        total = total_lookup.get(airline, 1)
-        stats.append({
-            "airline": airline,
-            "percentage": (delayed / total) * 100
-        })
+    if not delayed or not total:
+        print("No data for percentage delayed flights per airline.")
+        return
 
-    stats = sorted(stats, key=lambda x: x["percentage"], reverse=True)
-    airlines = [row["airline"] for row in stats]
-    percentages = [row["percentage"] for row in stats]
+    total_dict = {row["airline"]: row["total_flights"] for row in total}
+    data = []
 
-    plt.figure(figsize=(12, 7))
-    plt.bar(airlines, percentages, color="skyblue")
+    for d in delayed:
+        airline = d["airline"]
+        delayed_count = d["delayed_flights"]
+        total_count = total_dict.get(airline, 0)
+        if total_count > 0:
+            percentage = (delayed_count / total_count) * 100
+            data.append({"airline": airline, "percentage": percentage})
+
+    df = pd.DataFrame(data)
+    if df.empty:
+        print("No percentage delayed flight data for airlines (empty DataFrame).")
+        return
+
+    plt.figure(figsize=(12, 6))
+    sns.barplot(x="airline", y="percentage", data=df)
+    plt.title("Percentage of Delayed Flights per Airline")
     plt.xlabel("Airline")
-    plt.ylabel("Percentage of Delayed Flights (%)")
-    plt.title("Percentage of Delayed Flights by Airline")
+    plt.ylabel("Percentage Delayed (%)")
     plt.xticks(rotation=45)
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    for index, row in df.iterrows():
+        plt.text(index, row.percentage + 1, f"{row.percentage:.1f}%", ha='center', va='bottom')
     plt.tight_layout()
     plt.show()
+
 
 def plot_percentage_delayed_flights_by_hour(data_manager):
-    delayed_stats = data_manager.get_delayed_flights_by_hour()
-    total_stats = data_manager.get_total_flights_by_hour()
+    delayed = data_manager.get_delayed_flights_by_hour()
+    total = data_manager.get_total_flights_by_hour()
 
-    total_lookup = {row["hour"]: row["total_flights"] for row in total_stats}
-    stats = []
-    for row in delayed_stats:
-        hour = row["hour"]
-        delayed = row["delayed_flights"]
-        total = total_lookup.get(hour, 1)
-        stats.append({
-            "hour": hour,
-            "percentage": (delayed / total) * 100
-        })
+    if not delayed or not total:
+        print("No data for delayed flights by hour.")
+        return
 
-    stats = sorted(stats, key=lambda x: int(x["hour"]))
-    hours = [int(row["hour"]) for row in stats]
-    percentages = [row["percentage"] for row in stats]
+    total_dict = {row["hour"]: row["total_flights"] for row in total}
+    data = []
 
-    plt.figure(figsize=(12, 7))
-    plt.bar(hours, percentages, color="orange")
+    for d in delayed:
+        hour = d["hour"]
+        delayed_count = d["delayed_flights"]
+        total_count = total_dict.get(hour, 0)
+        if total_count > 0:
+            percentage = (delayed_count / total_count) * 100
+            data.append({"hour": hour, "percentage": percentage})
+
+    df = pd.DataFrame(data).sort_values("hour")
+    if df.empty:
+        print("No percentage delayed flight data by hour (empty DataFrame).")
+        return
+
+    plt.figure(figsize=(12, 6))
+    sns.lineplot(x="hour", y="percentage", data=df, marker="o")
+    plt.title("Percentage of Delayed Flights per Hour")
     plt.xlabel("Hour of Day")
-    plt.ylabel("Percentage of Delayed Flights (%)")
-    plt.title("Percentage of Delayed Flights by Hour")
-    plt.xticks(hours)
-    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.ylabel("Percentage Delayed (%)")
+    plt.xticks(range(0, 24))
+    plt.grid(True)
     plt.tight_layout()
     plt.show()
 
+
 def plot_delays_heatmap_routes(data_manager):
-    print("Heatmap of routes - placeholder function. To be implemented with seaborn or similar.")
+    delayed_routes = data_manager.get_delayed_flights_by_route()
+
+    if not delayed_routes:
+        print("No delayed route data.")
+        return
+
+    df = pd.DataFrame(delayed_routes)
+    if df.empty or "origin_airport" not in df.columns or "destination_airport" not in df.columns:
+        print("Heatmap data missing necessary columns.")
+        return
+
+    pivot = df.pivot_table(index="origin_airport", columns="destination_airport", values="delayed_flights", fill_value=0)
+
+    if pivot.empty:
+        print("Heatmap has no data after pivot.")
+        return
+
+    plt.figure(figsize=(18, 14))
+    sns.heatmap(pivot, cmap="YlOrRd", annot=True, fmt="d")
+    plt.title("Heatmap of Delayed Flights by Route")
+    plt.xlabel("Destination Airport")
+    plt.ylabel("Origin Airport")
+    plt.tight_layout()
+    plt.show()
+
 
 def plot_delays_on_map(data_manager):
-    print("Map of routes - placeholder function. To be implemented with folium or similar.")
+    delayed_routes = data_manager.get_delayed_flights_by_route()
+
+    if not delayed_routes:
+        print("No delayed route data.")
+        return
+
+    df = pd.DataFrame(delayed_routes)
+    if df.empty:
+        print("No delayed route data (empty DataFrame).")
+        return
+
+    m = folium.Map(location=[20, 0], zoom_start=2)
+
+    # Dummy example airport coordinates
+    airport_coords = {
+        "JFK": (40.6413, -73.7781),
+        "LAX": (33.9416, -118.4085),
+        "ORD": (41.9742, -87.9073),
+        "SFO": (37.6213, -122.3790),
+        "ATL": (33.6407, -84.4277),
+        "SJU": (18.4394, -66.0018),
+        "DFW": (32.8998, -97.0403),
+        "DEN": (39.8561, -104.6737),
+        "MIA": (25.7959, -80.2870),
+    }
+
+    for _, row in df.iterrows():
+        origin = row.get("origin_airport")
+        destination = row.get("destination_airport")
+        count = row.get("delayed_flights")
+
+        origin_coords = airport_coords.get(origin)
+        destination_coords = airport_coords.get(destination)
+
+        if origin_coords and destination_coords:
+            folium.PolyLine(
+                locations=[origin_coords, destination_coords],
+                tooltip=f"{origin} ➔ {destination}: {count} delays",
+                color="red",
+                weight=2,
+                opacity=0.7
+            ).add_to(m)
+        else:
+            folium.Marker(
+                location=[0, 0],
+                popup=f"{origin} ➔ {destination}: {count} delays",
+                icon=folium.Icon(color="red")
+            ).add_to(m)
+
+    m.save("delayed_routes_map.html")
+    print("Map saved as 'delayed_routes_map.html'. Opening browser...")
+    webbrowser.open("delayed_routes_map.html")

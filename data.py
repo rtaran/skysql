@@ -85,7 +85,22 @@ QUERY_DELAYED_FLIGHTS_BY_AIRPORT = """
 SELECT flights.*, airlines.airline 
 FROM flights 
 JOIN airlines ON flights.airline = airlines.id 
-WHERE flights.ORIGIN_AIRPORT = :origin AND flights.DEPARTURE_DELAY >= 20
+WHERE flights.ORIGIN_AIRPORT = :origin
+  AND flights.DEPARTURE_DELAY IS NOT NULL
+  AND flights.DEPARTURE_DELAY >= 0
+"""
+
+QUERY_TOP_5_DELAYED_FLIGHTS_BY_DATE = """
+SELECT flights.*, airlines.airline, flights.DEPARTURE_DELAY
+FROM flights
+JOIN airlines ON flights.airline = airlines.id
+WHERE flights.DEPARTURE_DELAY IS NOT NULL
+  AND flights.DEPARTURE_DELAY > 0
+  AND flights.DAY = :day
+  AND flights.MONTH = :month
+  AND flights.YEAR = :year
+ORDER BY flights.DEPARTURE_DELAY DESC
+LIMIT :limit
 """
 
 
@@ -110,7 +125,6 @@ class FlightData:
         try:
             connection = getattr(self, "_mock_connection", None)
             if connection is not None:
-                # Always use parameters=params for execute!
                 result = connection.execute(text(query), parameters=params)
                 return [dict(row) for row in result]
             with self.engine.connect() as conn:
@@ -121,34 +135,34 @@ class FlightData:
             return []
 
     def get_flight_by_id(self, flight_id):
-        return self._execute_query(QUERY_FLIGHT_BY_ID, {"id": flight_id})
+        return _lowercase_mapping_rows(self._execute_query(QUERY_FLIGHT_BY_ID, {"id": flight_id}))
 
     def get_flights_by_date(self, day, month, year):
-        return self._execute_query(QUERY_FLIGHTS_BY_DATE, {"day": day, "month": month, "year": year})
+        return _lowercase_mapping_rows(self._execute_query(QUERY_FLIGHTS_BY_DATE, {"day": day, "month": month, "year": year}))
 
     def get_delayed_flights_by_airline(self, airline=None):
         if airline:
             query = """
-            SELECT airlines.airline AS airline, COUNT(*) as delayed_flights
+            SELECT airlines.airline AS airline, COUNT(*) AS delayed_flights
             FROM flights
             JOIN airlines ON flights.airline = airlines.id
             WHERE airlines.airline = :airline AND flights.DEPARTURE_DELAY >= 20
             GROUP BY airlines.airline
             """
             params = {"airline": airline}
-            return self._execute_query(query, params)
         else:
-            query = """
-            SELECT airlines.airline AS airline, COUNT(*) as delayed_flights
-            FROM flights
-            JOIN airlines ON flights.airline = airlines.id
-            WHERE flights.DEPARTURE_DELAY >= 20
-            GROUP BY airlines.airline
-            """
-            return self._execute_query(query)
+            query = QUERY_DELAYED_FLIGHTS_BY_AIRLINE
+            params = None
+        rows = self._execute_query(query, params) if params else self._execute_query(query)
+        return [{k.lower(): v for k, v in row.items()} for row in rows]
 
     def get_delayed_flights_by_airport(self, airport_code):
-        return self._execute_query(QUERY_DELAYED_FLIGHTS_BY_AIRPORT, {"origin": airport_code})
+        return _lowercase_mapping_rows(self._execute_query(QUERY_DELAYED_FLIGHTS_BY_AIRPORT, {"origin": airport_code}))
+
+    def get_top_delayed_flights_by_date(self, day, month, year, limit=5):
+        return _lowercase_mapping_rows(self._execute_query(QUERY_TOP_5_DELAYED_FLIGHTS_BY_DATE, {
+            "day": day, "month": month, "year": year, "limit": limit
+        }))
 
     def get_delayed_flights(self):
         return self._execute_query(QUERY_DELAYED_FLIGHTS)
@@ -165,13 +179,13 @@ class FlightData:
         return self._execute_query(QUERY_FLIGHTS_BY_DESTINATION, params)
 
     def get_total_flights_by_airline(self):
-        return self._execute_query(QUERY_TOTAL_FLIGHTS_BY_AIRLINE)
+        return _lowercase_mapping_rows(self._execute_query(QUERY_TOTAL_FLIGHTS_BY_AIRLINE))
 
     def get_delayed_flights_by_hour(self):
-        return self._execute_query(QUERY_DELAYED_FLIGHTS_BY_HOUR)
+        return _lowercase_mapping_rows(self._execute_query(QUERY_DELAYED_FLIGHTS_BY_HOUR))
 
     def get_total_flights_by_hour(self):
-        return self._execute_query(QUERY_TOTAL_FLIGHTS_BY_HOUR)
+        return _lowercase_mapping_rows(self._execute_query(QUERY_TOTAL_FLIGHTS_BY_HOUR))
 
     def get_delayed_flights_by_route(self):
         return self._execute_query(QUERY_DELAYED_FLIGHTS_BY_ROUTE)
@@ -185,3 +199,10 @@ class FlightData:
                 self.engine.dispose()
             except Exception:
                 pass
+
+
+def _lowercase_mapping_rows(results):
+    """
+    Convert SQLAlchemy RowMapping results to list of dicts with lowercase keys.
+    """
+    return [{k.lower(): v for k, v in row.items()} for row in results]
