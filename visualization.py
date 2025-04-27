@@ -16,6 +16,14 @@ def plot_delayed_flights_by_airline(data_manager):
         print("No delayed flight data for airlines (empty DataFrame).")
         return
 
+    # 🔥 Fix: Rename 'airline_name' to 'airline' if needed
+    if "airline_name" in df.columns and "airline" not in df.columns:
+        df.rename(columns={"airline_name": "airline"}, inplace=True)
+
+    if "airline" not in df.columns:
+        print("Flight data still missing 'airline' column after renaming.")
+        return
+
     plt.figure(figsize=(12, 6))
     sns.barplot(x="airline", y="delayed_flights", data=df)
     plt.title("Number of Delayed Flights per Airline")
@@ -23,7 +31,7 @@ def plot_delayed_flights_by_airline(data_manager):
     plt.ylabel("Number of Delayed Flights")
     plt.xticks(rotation=45)
     for index, row in df.iterrows():
-        plt.text(index, row.delayed_flights + 2, int(row.delayed_flights), ha='center', va='bottom')
+        plt.text(index, row["delayed_flights"] + 2, int(row["delayed_flights"]), ha='center', va='bottom')
     plt.tight_layout()
     plt.show()
 
@@ -36,30 +44,24 @@ def plot_percentage_delayed_flights_by_airline(data_manager):
         print("No data for percentage delayed flights per airline.")
         return
 
-    total_dict = {row["airline"]: row["total_flights"] for row in total}
-    data = []
+    delayed_df = pd.DataFrame(delayed)
+    total_df = pd.DataFrame(total)
 
-    for d in delayed:
-        airline = d["airline"]
-        delayed_count = d["delayed_flights"]
-        total_count = total_dict.get(airline, 0)
-        if total_count > 0:
-            percentage = (delayed_count / total_count) * 100
-            data.append({"airline": airline, "percentage": percentage})
-
-    df = pd.DataFrame(data)
-    if df.empty:
-        print("No percentage delayed flight data for airlines (empty DataFrame).")
+    if delayed_df.empty or total_df.empty:
+        print("One of the datasets is empty.")
         return
 
+    merged = pd.merge(delayed_df, total_df, on="airline")
+    merged["percentage"] = (merged["delayed_flights"] / merged["total_flights"]) * 100
+
     plt.figure(figsize=(12, 6))
-    sns.barplot(x="airline", y="percentage", data=df)
+    sns.barplot(x="airline", y="percentage", data=merged)
     plt.title("Percentage of Delayed Flights per Airline")
     plt.xlabel("Airline")
     plt.ylabel("Percentage Delayed (%)")
     plt.xticks(rotation=45)
-    for index, row in df.iterrows():
-        plt.text(index, row.percentage + 1, f"{row.percentage:.1f}%", ha='center', va='bottom')
+    for index, row in merged.iterrows():
+        plt.text(index, row["percentage"] + 1, f"{row['percentage']:.1f}%", ha='center', va='bottom')
     plt.tight_layout()
     plt.show()
 
@@ -72,25 +74,16 @@ def plot_percentage_delayed_flights_by_hour(data_manager):
         print("No data for delayed flights by hour.")
         return
 
-    total_dict = {row["hour"]: row["total_flights"] for row in total}
-    data = []
+    delayed_df = pd.DataFrame(delayed)
+    total_df = pd.DataFrame(total)
 
-    for d in delayed:
-        hour = d["hour"]
-        delayed_count = d["delayed_flights"]
-        total_count = total_dict.get(hour, 0)
-        if total_count > 0:
-            percentage = (delayed_count / total_count) * 100
-            data.append({"hour": hour, "percentage": percentage})
-
-    df = pd.DataFrame(data).sort_values("hour")
-    if df.empty:
-        print("No percentage delayed flight data by hour (empty DataFrame).")
-        return
+    merged = pd.merge(delayed_df, total_df, on="hour")
+    merged["percentage"] = (merged["delayed_flights"] / merged["total_flights"]) * 100
+    merged = merged.sort_values("hour")
 
     plt.figure(figsize=(12, 6))
-    sns.lineplot(x="hour", y="percentage", data=df, marker="o")
-    plt.title("Percentage of Delayed Flights per Hour")
+    sns.lineplot(x="hour", y="percentage", data=merged, marker="o")
+    plt.title("Percentage of Delayed Flights by Hour")
     plt.xlabel("Hour of Day")
     plt.ylabel("Percentage Delayed (%)")
     plt.xticks(range(0, 24))

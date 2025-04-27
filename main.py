@@ -8,71 +8,125 @@ from visualization import (
 )
 import os
 
-
 DB_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "data", "flights.sqlite3")
 )
 
+# --- Helper Functions ---
+
+def _print_table(data, fields):
+    widths = [max(len(str(row.get(field, ""))) for row in data + [dict(zip(fields, fields))]) for field in fields]
+    header = " ".join(field.ljust(width) for field, width in zip(fields, widths))
+    separator = "-" * (sum(widths) + len(widths) - 1)
+
+    print("\n=== Flight Information ===")
+    print(header)
+    print(separator)
+    for row in data:
+        print(" ".join(str(row.get(field, "")).ljust(width) for field, width in zip(fields, widths)))
+    print(separator)
+
+
+# --- Menu Actions ---
 
 def show_flight_by_id(data_manager):
-    flight_id = input("Enter flight ID: ")
-    flight = data_manager.get_flight_by_id(flight_id)
-    if flight:
-        print(flight)
-    else:
-        print("Flight not found.")
+    flight_id = input("Enter flight ID: ").strip()
+    if not flight_id.isdigit():
+        print("Invalid ID. Please enter a number.")
+        return
 
+    flight = data_manager.get_flight_by_id(int(flight_id))
+    if not flight:
+        print("Flight not found.")
+        return
+
+    fields = ["id", "year", "month", "day", "origin_airport", "destination_airport", "delay"]
+    _print_table(flight, fields)
 
 def show_flights_by_date(data_manager):
     date_input = input("Enter date in DD/MM/YYYY format: ")
     try:
-        day, month, year = date_input.split("/")
+        day, month, year = map(int, date_input.split("/"))
     except ValueError:
         print("Invalid date format. Please use DD/MM/YYYY.")
         return
+
     flights = data_manager.get_flights_by_date(day, month, year)
-    if flights:
-        for f in flights:
-            print(f)
-    else:
+    if not flights:
         print("No flights found on this date.")
-
-
-def show_top_delayed_flights_by_date(data_manager):
-    date_input = input("Enter date in DD/MM/YYYY format: ")
-    try:
-        day, month, year = date_input.split("/")
-    except ValueError:
-        print("Invalid date format. Please use DD/MM/YYYY.")
         return
-    flights = data_manager.get_top_delayed_flights_by_date(day, month, year, 5)
-    if flights:
-        for f in flights:
-            print(f)
-    else:
-        print("No delayed flights found on this date.")
 
+    fields = ["id", "year", "month", "day", "origin_airport", "destination_airport", "delay"]
+    _print_table(flights, fields)
 
 def delayed_flights_by_airline(data_manager):
     data = data_manager.get_delayed_flights_by_airline()
-    for row in data:
-        print(f"Airline: {row['airline']}, Delayed Flights: {row['delayed_flights']}")
+    if not data:
+        print("No delayed flights data found.")
+        return
 
+    print("\n=== Delayed Flights by Airline ===")
+    for row in data:
+        print(f"Airline: {row.get('airline', row.get('AIRLINE', 'Unknown'))}, Delayed Flights: {row.get('delayed_flights', row.get('DELAYED_FLIGHTS', 0))}")
 
 def delayed_flights_by_origin(data_manager):
-    origin = input("Enter origin airport code: ")
-    data = data_manager.get_delayed_flights_by_airport(origin)
-    if data:
-        for row in data:
-            print(f"Flight ID: {row['id']}, Delay: {row['delay']}")
-    else:
-        print("No delayed flights found for this origin.")
+    """Show delayed flights by selected origin airport."""
+    origin = input("Enter origin airport code: ").strip().upper()
+    if len(origin) != 3 or not origin.isalpha():
+        print("Invalid IATA code. Must be 3 alphabetic letters.")
+        return
 
+    data = data_manager.get_delayed_flights_by_airport(origin)
+    if not data:
+        print("No delayed flights found for this origin.")
+        return
+
+    print("\n=== Delayed Flights from Origin ===")
+    for row in data:
+        delay = row.get('delay', 'N/A')  # Safely get delay
+        print(f"Flight ID: {row.get('id', 'Unknown')}, Delay: {delay} minutes")
+
+def show_top_delayed_flights_by_date(data_manager):
+    date_input = input("Enter date in DD/MM/YYYY format: ").strip()
+    try:
+        day, month, year = map(int, date_input.split("/"))
+    except ValueError:
+        print("Invalid date format. Please use DD/MM/YYYY.")
+        return
+
+    all_flights = data_manager.get_flights_by_date(day, month, year)
+    if not all_flights:
+        print("No flights found on this date.")
+        return
+
+    delayed_flights = data_manager.get_top_delayed_flights_by_date(day, month, year, 5)
+    if not delayed_flights:
+        print("Flights found, but no delayed flights on this date.")
+        return
+
+    fields = ["id", "flight_number", "origin", "delay"]
+    _print_table(delayed_flights, fields)
+
+def generate_visualizations(data_manager):
+    print("\n=== Generating Visualizations ===")
+    try:
+        delayed_flights_data = data_manager.get_delayed_flights()
+        if delayed_flights_data:
+            plot_delayed_flights_by_airline(data_manager)
+            plot_percentage_delayed_flights_by_airline(data_manager)
+            plot_percentage_delayed_flights_by_hour(data_manager)
+            plot_delays_heatmap_routes(data_manager)
+            plot_delays_on_map(data_manager)
+        else:
+            print("No delayed flight data available to visualize.")
+    except Exception as e:
+        print(f"Visualization failed: {e}")
 
 def quit_program(data_manager):
-    print("Exiting program.")
+    print("Exiting program. Goodbye!")
     quit()
 
+# --- Main Loop ---
 
 def main():
     print(f"Using database at: {DB_PATH}")
@@ -84,7 +138,8 @@ def main():
         "3": delayed_flights_by_airline,
         "4": delayed_flights_by_origin,
         "5": show_top_delayed_flights_by_date,
-        "6": quit_program,
+        "6": generate_visualizations,
+        "7": quit_program,
     }
 
     while True:
@@ -96,36 +151,19 @@ def main():
         print("3. Delayed flights by airline")
         print("4. Delayed flights by origin airport")
         print("5. Top 5 delayed flights by date")
-        print("6. Exit")
+        print("6. Generate visualizations")
+        print("7. Exit")
         print("=" * 40)
 
         choice = input("Select an option: ").strip()
-
         choice_func = menu_options.get(choice)
+
         if not choice_func:
-            print("Invalid option, please try again.")
+            print("\n❗ Invalid option, please select a number between 1 and 7.\n")
             continue
 
         choice_func(data_manager)
-
-        # After executing the chosen function, plot visualizations
-        try:
-            print("Attempting to generate visualizations...")
-            if hasattr(data_manager, "get_delayed_flights"):
-                delayed_flights_data = data_manager.get_delayed_flights()
-                if delayed_flights_data:
-                    plot_delayed_flights_by_airline(data_manager)
-                    plot_percentage_delayed_flights_by_airline(data_manager)
-                    plot_percentage_delayed_flights_by_hour(data_manager)
-                    plot_delays_heatmap_routes(data_manager)
-                    plot_delays_on_map(data_manager)
-                else:
-                    print("No delayed flight data available to visualize.")
-            else:
-                print("Data manager does not support delayed flights retrieval. Skipping visualization.")
-        except Exception as e:
-            print(f"Visualization failed: {e}")
-
+        input("\nPress Enter to return to Main Menu...")
 
 if __name__ == "__main__":
     main()
