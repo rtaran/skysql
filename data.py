@@ -18,7 +18,14 @@ WHERE flights.DEPARTURE_DELAY >= 20
 GROUP BY airlines.airline
 """
 
-QUERY_DELAYED_FLIGHTS_BY_AIRLINE = QUERY_DELAYED_FLIGHTS
+QUERY_DELAYED_FLIGHTS_BY_AIRLINE = """
+SELECT airlines.airline, COUNT(*) as delayed_flights 
+FROM flights 
+JOIN airlines ON flights.airline = airlines.id 
+WHERE flights.DEPARTURE_DELAY >= 20 
+AND airlines.airline = :airline_name
+GROUP BY airlines.airline
+"""
 
 QUERY_TOTAL_FLIGHTS_BY_AIRLINE = """
 SELECT airlines.airline, COUNT(*) as total_flights 
@@ -56,11 +63,13 @@ GROUP BY ORIGIN_AIRPORT, DESTINATION_AIRPORT
 """
 
 QUERY_FLIGHTS_BY_ORIGIN = """
-SELECT flights.ID as id, flights.ORIGIN_AIRPORT as origin_airport, flights.DEPARTURE_DELAY as delay
+SELECT flights.ID as id, flights.ORIGIN_AIRPORT as origin_airport, flights.DESTINATION_AIRPORT as destination_airport, 
+       airlines.airline as airline_name, flights.DEPARTURE_DELAY as delay
 FROM flights 
+JOIN airlines ON flights.airline = airlines.id 
 WHERE flights.ORIGIN_AIRPORT = :origin
   AND flights.DEPARTURE_DELAY IS NOT NULL
-  AND flights.DEPARTURE_DELAY >= 0
+  AND flights.DEPARTURE_DELAY >= 20
 """
 
 QUERY_FLIGHTS_BY_DATE = """
@@ -108,8 +117,11 @@ class FlightData:
     def get_flights_by_date(self, day, month, year):
         return self._execute_query(QUERY_FLIGHTS_BY_DATE, {"day": day, "month": month, "year": year})
 
-    def get_delayed_flights_by_airline(self):
-        return self._execute_query(QUERY_DELAYED_FLIGHTS_BY_AIRLINE)
+    def get_delayed_flights_by_airline(self, airline_name=None):
+        if airline_name:
+            return self._execute_query(QUERY_DELAYED_FLIGHTS_BY_AIRLINE, {"airline_name": airline_name})
+        else:
+            return self._execute_query(QUERY_DELAYED_FLIGHTS)
 
     def get_delayed_flights_by_airport(self, airport_code):
         return self._execute_query(QUERY_FLIGHTS_BY_ORIGIN, {"origin": airport_code})

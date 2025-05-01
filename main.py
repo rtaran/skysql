@@ -5,6 +5,7 @@ from visualization import (
     plot_percentage_delayed_flights_by_hour,
     plot_delays_heatmap_routes,
     plot_delays_on_map,
+    plot_percentage_delayed_routes_on_map,
 )
 import os
 
@@ -60,7 +61,9 @@ def show_flights_by_date(data_manager):
     _print_table(flights, fields)
 
 def delayed_flights_by_airline(data_manager):
-    data = data_manager.get_delayed_flights_by_airline()
+    airline_name = input("Enter airline name (leave empty for all airlines): ").strip()
+
+    data = data_manager.get_delayed_flights_by_airline(airline_name if airline_name else None)
     if not data:
         print("No delayed flights data found.")
         return
@@ -84,7 +87,10 @@ def delayed_flights_by_origin(data_manager):
     print("\n=== Delayed Flights from Origin ===")
     for row in data:
         delay = row.get('delay', 'N/A')  # Safely get delay
-        print(f"Flight ID: {row.get('id', 'Unknown')}, Delay: {delay} minutes")
+        origin_airport = row.get('origin_airport', 'Unknown')
+        destination_airport = row.get('destination_airport', 'Unknown')
+        airline_name = row.get('airline_name', 'Unknown')
+        print(f"Flight ID: {row.get('id', 'Unknown')}, Origin: {origin_airport}, Destination: {destination_airport}, Airline: {airline_name}, Delay: {delay} minutes")
 
 def show_top_delayed_flights_by_date(data_manager):
     date_input = input("Enter date in DD/MM/YYYY format: ").strip()
@@ -108,17 +114,47 @@ def show_top_delayed_flights_by_date(data_manager):
     _print_table(delayed_flights, fields)
 
 def generate_visualizations(data_manager):
-    print("\n=== Generating Visualizations ===")
+    print("\n=== Visualization Menu ===")
+    print("1. Number of delayed flights by airline")
+    print("2. Percentage of delayed flights by airline")
+    print("3. Percentage of delayed flights by hour")
+    print("4. Percentage of delayed flights per route on a Map (Origin <-> Destination, both directions average)")
+    print("5. Heatmap of delayed flights by route")
+    print("6. Delayed flights on a map")
+    print("7. Generate all visualizations")
+    print("8. Return to main menu")
+
+    choice = input("\nSelect a visualization (1-8): ").strip()
+
     try:
         delayed_flights_data = data_manager.get_delayed_flights()
-        if delayed_flights_data:
+        if not delayed_flights_data:
+            print("No delayed flight data available to visualize.")
+            return
+
+        if choice == "1":
+            plot_delayed_flights_by_airline(data_manager)
+        elif choice == "2":
+            plot_percentage_delayed_flights_by_airline(data_manager)
+        elif choice == "3":
+            plot_percentage_delayed_flights_by_hour(data_manager)
+        elif choice == "4":
+            plot_percentage_delayed_routes_on_map(data_manager)
+        elif choice == "5":
+            plot_delays_heatmap_routes(data_manager)
+        elif choice == "6":
+            plot_delays_on_map(data_manager)
+        elif choice == "7":
             plot_delayed_flights_by_airline(data_manager)
             plot_percentage_delayed_flights_by_airline(data_manager)
             plot_percentage_delayed_flights_by_hour(data_manager)
+            plot_percentage_delayed_routes_on_map(data_manager)
             plot_delays_heatmap_routes(data_manager)
             plot_delays_on_map(data_manager)
+        elif choice == "8":
+            return
         else:
-            print("No delayed flight data available to visualize.")
+            print("Invalid choice. Please select a number between 1 and 8.")
     except Exception as e:
         print(f"Visualization failed: {e}")
 

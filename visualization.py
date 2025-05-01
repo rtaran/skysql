@@ -170,3 +170,102 @@ def plot_delays_on_map(data_manager):
     m.save("delayed_routes_map.html")
     print("Map saved as 'delayed_routes_map.html'. Opening browser...")
     webbrowser.open("delayed_routes_map.html")
+
+def plot_percentage_delayed_routes_on_map(data_manager):
+    """
+    Plot the percentage of delayed flights per route on a map,
+    averaging both directions (Origin <-> Destination).
+    """
+    delayed_routes = data_manager.get_delayed_flights_by_route()
+    total_routes = data_manager.get_total_flights_by_route()
+
+    if not delayed_routes or not total_routes:
+        print("No route data available.")
+        return
+
+    delayed_df = pd.DataFrame(delayed_routes)
+    total_df = pd.DataFrame(total_routes)
+
+    # Ensure column names are lowercase
+    delayed_df.columns = [col.lower() for col in delayed_df.columns]
+    total_df.columns = [col.lower() for col in total_df.columns]
+
+    # Create dictionaries for easy lookup
+    delayed_dict = {}
+    for _, row in delayed_df.iterrows():
+        origin = row.get('origin_airport')
+        destination = row.get('destination_airport')
+        delayed_count = row.get('delayed_flights', 0)
+        delayed_dict[(origin, destination)] = delayed_count
+
+    total_dict = {}
+    for _, row in total_df.iterrows():
+        origin = row.get('origin_airport')
+        destination = row.get('destination_airport')
+        total_count = row.get('total_flights', 0)
+        total_dict[(origin, destination)] = total_count
+
+    # Calculate percentage for each route and average both directions
+    route_percentages = {}
+    for route in set(list(delayed_dict.keys()) + list(total_dict.keys())):
+        origin, destination = route
+        reverse_route = (destination, origin)
+
+        # Calculate percentage for this direction
+        delayed_count = delayed_dict.get(route, 0)
+        total_count = total_dict.get(route, 0)
+        percentage = (delayed_count / total_count * 100) if total_count > 0 else 0
+
+        # Calculate percentage for reverse direction
+        reverse_delayed_count = delayed_dict.get(reverse_route, 0)
+        reverse_total_count = total_dict.get(reverse_route, 0)
+        reverse_percentage = (reverse_delayed_count / reverse_total_count * 100) if reverse_total_count > 0 else 0
+
+        # Average the percentages if both directions exist
+        if total_count > 0 and reverse_total_count > 0:
+            avg_percentage = (percentage + reverse_percentage) / 2
+            # Store the average percentage for the route (in both directions)
+            canonical_route = tuple(sorted([origin, destination]))
+            route_percentages[canonical_route] = avg_percentage
+        elif total_count > 0:
+            # Only one direction exists
+            canonical_route = tuple(sorted([origin, destination]))
+            route_percentages[canonical_route] = percentage
+
+    # Create a map
+    m = folium.Map(location=[20, 0], zoom_start=2)
+
+    airport_coords = {
+        "JFK": (40.6413, -73.7781), "LAX": (33.9416, -118.4085), "ORD": (41.9742, -87.9073),
+        "SFO": (37.6213, -122.3790), "ATL": (33.6407, -84.4277), "SJU": (18.4394, -66.0018),
+        "DFW": (32.8998, -97.0403), "DEN": (39.8561, -104.6737), "MIA": (25.7959, -80.2870)
+    }
+
+    # Add routes to the map
+    for route, percentage in route_percentages.items():
+        origin, destination = route
+
+        origin_coords = airport_coords.get(origin)
+        destination_coords = airport_coords.get(destination)
+
+        if origin_coords and destination_coords:
+            # Determine color based on percentage
+            if percentage < 10:
+                color = "green"
+                weight = 2
+            elif percentage < 20:
+                color = "orange"
+                weight = 3
+            else:
+                color = "red"
+                weight = 4
+
+            folium.PolyLine(
+                locations=[origin_coords, destination_coords],
+                tooltip=f"{origin} <-> {destination}: {percentage:.1f}% delayed",
+                color=color, weight=weight, opacity=0.7
+            ).add_to(m)
+
+    m.save("delayed_routes_percentage_map.html")
+    print("Map saved as 'delayed_routes_percentage_map.html'. Opening browser...")
+    webbrowser.open("delayed_routes_percentage_map.html")
