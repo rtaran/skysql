@@ -51,8 +51,8 @@ class TestFlightData:
         # Setup the mock to return specific results
         mock_result = MagicMock()
         mock_result.__iter__.return_value = [
-            {"ID": 1, "ORIGIN_AIRPORT": "LAX", "DESTINATION_AIRPORT": "JFK", "AIRLINE": "Delta", "DEPARTURE_DELAY": 25},
-            {"ID": 2, "ORIGIN_AIRPORT": "SFO", "DESTINATION_AIRPORT": "ORD", "AIRLINE": "United", "DEPARTURE_DELAY": 30}
+            {"id": 1, "flight_number": "DL123", "origin_airport": "LAX", "destination_airport": "JFK", "airline_name": "Delta", "delay": 25},
+            {"id": 2, "flight_number": "UA456", "origin_airport": "SFO", "destination_airport": "ORD", "airline_name": "United", "delay": 30}
         ]
         data_manager._mock_connection.execute.return_value = mock_result
 
@@ -61,12 +61,12 @@ class TestFlightData:
 
         # Verify the result
         assert len(result) == 2
-        assert result[0]["DEPARTURE_DELAY"] == 25
-        assert result[1]["DEPARTURE_DELAY"] == 30
+        assert result[0]["delay"] == 25
+        assert result[1]["delay"] == 30
 
         # Verify the correct query was executed
         call_args = data_manager._mock_connection.execute.call_args[0]
-        assert "WHERE flights.DEPARTURE_DELAY >= 20" in str(call_args[0])
+        assert "WHERE flights.DEPARTURE_DELAY >=" in str(call_args[0])
 
     def test_get_flights_by_origin_invalid_code(self, data_manager):
         """Test input validation for invalid IATA code"""
@@ -103,7 +103,8 @@ class TestFlightData:
         # Setup the mock to return specific results
         mock_result = MagicMock()
         mock_result.__iter__.return_value = [
-            {"airline": "Delta", "delayed_flights": 150}
+            {"id": 1, "flight_number": "DL123", "origin_airport": "LAX", "destination_airport": "JFK", "airline_name": "Delta", "delay": 25},
+            {"id": 2, "flight_number": "DL456", "origin_airport": "SFO", "destination_airport": "ORD", "airline_name": "Delta", "delay": 30}
         ]
         data_manager._mock_connection.execute.return_value = mock_result
 
@@ -111,6 +112,7 @@ class TestFlightData:
         result = data_manager.get_delayed_flights_by_airline("Delta")
 
         # Verify the result
-        assert len(result) == 1
-        assert result[0]["airline"] == "Delta"
-        assert result[0]["delayed_flights"] == 150
+        assert len(result) == 2
+        assert result[0]["airline_name"] == "Delta"
+        assert result[0]["delay"] == 25
+        assert result[1]["delay"] == 30

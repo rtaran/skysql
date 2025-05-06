@@ -7,11 +7,9 @@ from visualization import (
     plot_delays_on_map,
     plot_percentage_delayed_routes_on_map,
 )
-import os
+from pathlib import Path
 
-DB_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "data", "flights.sqlite3")
-)
+DB_PATH = Path(__file__).parent / "data" / "flights.sqlite3"
 
 # --- Helper Functions ---
 
@@ -60,6 +58,7 @@ def show_flights_by_date(data_manager):
     fields = ["id", "year", "month", "day", "origin_airport", "destination_airport", "delay"]
     _print_table(flights, fields)
 
+
 def delayed_flights_by_airline(data_manager):
     airline_name = input("Enter airline name (leave empty for all airlines): ").strip()
 
@@ -69,8 +68,9 @@ def delayed_flights_by_airline(data_manager):
         return
 
     print("\n=== Delayed Flights by Airline ===")
-    for row in data:
-        print(f"Airline: {row.get('airline', row.get('AIRLINE', 'Unknown'))}, Delayed Flights: {row.get('delayed_flights', row.get('DELAYED_FLIGHTS', 0))}")
+    fields = ["id", "flight_number", "origin_airport", "destination_airport", "airline_name", "delay"]
+    _print_table(data, fields)
+
 
 def delayed_flights_by_origin(data_manager):
     """Show delayed flights by selected origin airport."""
@@ -92,6 +92,7 @@ def delayed_flights_by_origin(data_manager):
         airline_name = row.get('airline_name', 'Unknown')
         print(f"Flight ID: {row.get('id', 'Unknown')}, Origin: {origin_airport}, Destination: {destination_airport}, Airline: {airline_name}, Delay: {delay} minutes")
 
+
 def show_top_delayed_flights_by_date(data_manager):
     date_input = input("Enter date in DD/MM/YYYY format: ").strip()
     try:
@@ -112,6 +113,7 @@ def show_top_delayed_flights_by_date(data_manager):
 
     fields = ["id", "flight_number", "origin", "delay"]
     _print_table(delayed_flights, fields)
+
 
 def generate_visualizations(data_manager):
     print("\n=== Visualization Menu ===")
@@ -157,6 +159,7 @@ def generate_visualizations(data_manager):
             print("Invalid choice. Please select a number between 1 and 8.")
     except Exception as e:
         print(f"Visualization failed: {e}")
+
 
 def quit_program(data_manager):
     print("Exiting program. Goodbye!")

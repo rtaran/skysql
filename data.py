@@ -1,5 +1,8 @@
 from sqlalchemy import create_engine, text
 
+# Constants
+DELAY_THRESHOLD = 20
+
 # Query definitions
 QUERY_FLIGHT_BY_ID = """
 SELECT flights.ID as id, flights.YEAR as year, flights.MONTH as month, flights.DAY as day, 
@@ -10,21 +13,25 @@ JOIN airlines ON flights.airline = airlines.id
 WHERE flights.ID = :id
 """
 
-QUERY_DELAYED_FLIGHTS = """
-SELECT airlines.airline, COUNT(*) as delayed_flights 
+QUERY_DELAYED_FLIGHTS = f"""
+SELECT flights.ID as id, flights.FLIGHT_NUMBER as flight_number, 
+       flights.ORIGIN_AIRPORT as origin_airport, flights.DESTINATION_AIRPORT as destination_airport,
+       airlines.airline as airline_name, flights.DEPARTURE_DELAY as delay
 FROM flights 
 JOIN airlines ON flights.airline = airlines.id 
-WHERE flights.DEPARTURE_DELAY >= 20 
-GROUP BY airlines.airline
+WHERE flights.DEPARTURE_DELAY >= {DELAY_THRESHOLD}
+ORDER BY airlines.airline, flights.DEPARTURE_DELAY DESC
 """
 
-QUERY_DELAYED_FLIGHTS_BY_AIRLINE = """
-SELECT airlines.airline, COUNT(*) as delayed_flights 
+QUERY_DELAYED_FLIGHTS_BY_AIRLINE = f"""
+SELECT flights.ID as id, flights.FLIGHT_NUMBER as flight_number, 
+       flights.ORIGIN_AIRPORT as origin_airport, flights.DESTINATION_AIRPORT as destination_airport,
+       airlines.airline as airline_name, flights.DEPARTURE_DELAY as delay
 FROM flights 
 JOIN airlines ON flights.airline = airlines.id 
-WHERE flights.DEPARTURE_DELAY >= 20 
+WHERE flights.DEPARTURE_DELAY >= {DELAY_THRESHOLD}
 AND airlines.airline = :airline_name
-GROUP BY airlines.airline
+ORDER BY flights.DEPARTURE_DELAY DESC
 """
 
 QUERY_TOTAL_FLIGHTS_BY_AIRLINE = """
@@ -34,10 +41,10 @@ JOIN airlines ON flights.airline = airlines.id
 GROUP BY airlines.airline
 """
 
-QUERY_DELAYED_FLIGHTS_BY_HOUR = """
+QUERY_DELAYED_FLIGHTS_BY_HOUR = f"""
 SELECT CAST(SUBSTR(DEPARTURE_TIME, 1, 2) AS INTEGER) AS hour, COUNT(*) as delayed_flights 
 FROM flights 
-WHERE DEPARTURE_DELAY >= 20 
+WHERE DEPARTURE_DELAY >= {DELAY_THRESHOLD} 
 GROUP BY hour 
 ORDER BY hour
 """
@@ -49,10 +56,10 @@ GROUP BY hour
 ORDER BY hour
 """
 
-QUERY_DELAYED_FLIGHTS_BY_ROUTE = """
+QUERY_DELAYED_FLIGHTS_BY_ROUTE = f"""
 SELECT ORIGIN_AIRPORT, DESTINATION_AIRPORT, COUNT(*) as delayed_flights 
 FROM flights 
-WHERE DEPARTURE_DELAY >= 20 
+WHERE DEPARTURE_DELAY >= {DELAY_THRESHOLD} 
 GROUP BY ORIGIN_AIRPORT, DESTINATION_AIRPORT
 """
 
@@ -62,14 +69,14 @@ FROM flights
 GROUP BY ORIGIN_AIRPORT, DESTINATION_AIRPORT
 """
 
-QUERY_FLIGHTS_BY_ORIGIN = """
+QUERY_FLIGHTS_BY_ORIGIN = f"""
 SELECT flights.ID as id, flights.ORIGIN_AIRPORT as origin_airport, flights.DESTINATION_AIRPORT as destination_airport, 
        airlines.airline as airline_name, flights.DEPARTURE_DELAY as delay
 FROM flights 
 JOIN airlines ON flights.airline = airlines.id 
 WHERE flights.ORIGIN_AIRPORT = :origin
   AND flights.DEPARTURE_DELAY IS NOT NULL
-  AND flights.DEPARTURE_DELAY >= 20
+  AND flights.DEPARTURE_DELAY >= {DELAY_THRESHOLD}
 """
 
 QUERY_FLIGHTS_BY_DATE = """
@@ -127,7 +134,10 @@ class FlightData:
         return self._execute_query(QUERY_FLIGHTS_BY_ORIGIN, {"origin": airport_code})
 
     def get_top_delayed_flights_by_date(self, day, month, year, limit=5):
-        return self._execute_query(QUERY_TOP_5_DELAYED_FLIGHTS_BY_DATE, {"day": day, "month": month, "year": year, "limit": limit})
+        return self._execute_query(
+            QUERY_TOP_5_DELAYED_FLIGHTS_BY_DATE, 
+            {"day": day, "month": month, "year": year, "limit": limit}
+        )
 
     def get_delayed_flights(self):
         return self._execute_query(QUERY_DELAYED_FLIGHTS)
